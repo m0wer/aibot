@@ -200,13 +200,15 @@ async def handle_voice(update: Update, context):
 
     try:
         transcribed_text = await wait_for_job_result(stt_job)
+        logger.debug(f"Transcribed text for user_id: {user.id}: {transcribed_text}")
     except TimeoutError:
         transcribed_text = "Sorry, I couldn't transcribe your voice message in time."
         logger.error(f"Timeout waiting for STT job result for user_id: {user.id}")
 
-    logger.debug(f"Transcribed text for user_id: {user.id}: {transcribed_text}")
-
     save_message(user.id, transcribed_text, True)
+
+    # Inform the user that their message was received and is being processed
+    await update.message.reply_text("I've received your voice message. Processing...")
 
     recent_messages = get_recent_messages(user.id)
     context_messages = [
@@ -231,6 +233,7 @@ async def handle_voice(update: Update, context):
     save_message(user.id, response, False)
     logger.debug(f"Received response for user_id: {user.id}")
 
+    # Send the text response immediately
     await update.message.reply_text(response)
 
     logger.debug(f"Enqueueing TTS job for user_id: {user.id}")
