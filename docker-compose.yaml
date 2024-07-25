@@ -1,0 +1,84 @@
+services:
+  bot:
+    build: .
+    environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=sqlite:///data/db.sqlite
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
+    volumes:
+      - ${SQLITE_PATH:-./data/}:/app/data/
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  redis:
+    image: redis:6-alpine
+    ports:
+      - "6379:6379"
+
+  rq-worker-default:
+    build: .
+    command: rq worker --url redis://redis:6379 high default
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  rq-worker-high-priority:
+    build: .
+    command: rq worker --url redis://redis:6379 high
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  rq-worker-gpu:
+    build: .
+    command: rq worker --url redis://redis:6379 gpu
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+#        reservations: {devices: [{driver: nvidia, count: all, capabilities: [gpu]}]}
+
+  rq-dashboard:
+    build: https://github.com/Parallels/rq-dashboard.git
+    container_name: aibot-rq-dashboard
+    command: ["--redis-url", "redis://redis:6379/0", "--url-prefix", "/rq", "--verbose", "--username", "admin", "--password", "${RQ_DASHBOARD_PASSWORD:-admin}"]
+    ports:
+      - ${RQ_DASHBOARD_PORT:-9181}:9181
+    depends_on:
+      - redis
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 50MB

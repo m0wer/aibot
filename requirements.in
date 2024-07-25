@@ -1,0 +1,11 @@
+gTTS
+loguru
+ollama
+pydantic
+pydub
+python-telegram-bot
+redis
+rq
+SpeechRecognition
+sqlmodel
+torch
