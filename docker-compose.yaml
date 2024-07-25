@@ -1,6 +1,6 @@
 services:
   bot:
-    image: ghcr.io/m0wer/aiobot:master
+    image: ghcr.io/m0wer/aibot:master
     build: .
     environment:
       - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
@@ -24,7 +24,7 @@ services:
       - "6379:6379"
 
   rq-worker-default:
-    image: ghcr.io/m0wer/aiobot:master
+    image: ghcr.io/m0wer/aibot:master
     build: .
     command: rq worker --url redis://redis:6379 high default
     environment:
@@ -40,7 +40,7 @@ services:
           memory: 512M
 
   rq-worker-high-priority:
-    image: ghcr.io/m0wer/aiobot:master
+    image: ghcr.io/m0wer/aibot:master
     build: .
     command: rq worker --url redis://redis:6379 high
     environment:
@@ -56,7 +56,7 @@ services:
           memory: 512M
 
   rq-worker-gpu:
-    image: ghcr.io/m0wer/aiobot:master
+    image: ghcr.io/m0wer/aibot:master
     build: .
     command: rq worker --url redis://redis:6379 gpu
     environment:
