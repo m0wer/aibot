@@ -66,7 +66,7 @@ services:
         limits:
           cpus: '2'
           memory: 4G
-#        reservations: {devices: [{driver: nvidia, count: all, capabilities: [gpu]}]}
+        reservations: {devices: [{driver: nvidia, count: all, capabilities: [gpu]}]}
 
   rq-dashboard:
     build: https://github.com/Parallels/rq-dashboard.git
