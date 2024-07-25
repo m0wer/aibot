@@ -163,10 +163,15 @@ async def handle_text(update: Update, context):
     tts_job = high_priority_queue.enqueue(text_to_speech, TTSRequest(text=response))
 
     try:
-        tts_response: TTSResponse = await wait_for_job_result(tts_job)
+        tts_result = await wait_for_job_result(tts_job)
+        if isinstance(tts_result, TTSResponse):
+            tts_response = tts_result
+        else:
+            logger.error(f"Unexpected TTS job result type for user_id: {user.id}")
+            tts_response = None
     except TimeoutError:
-        tts_response = None
         logger.error(f"Timeout waiting for TTS job result for user_id: {user.id}")
+        tts_response = None
 
     if tts_response:
         audio_file = InputFile(
@@ -178,6 +183,8 @@ async def handle_text(update: Update, context):
         logger.info(
             f"Sent voice response to user_id: {user.id} with duration: {tts_response.duration:.2f} seconds"
         )
+    else:
+        logger.warning(f"Failed to generate voice message for user_id: {user.id}")
 
 
 async def handle_voice(update: Update, context):
@@ -230,10 +237,15 @@ async def handle_voice(update: Update, context):
     tts_job = high_priority_queue.enqueue(text_to_speech, TTSRequest(text=response))
 
     try:
-        tts_response: TTSResponse = await wait_for_job_result(tts_job)
+        tts_result = await wait_for_job_result(tts_job)
+        if isinstance(tts_result, TTSResponse):
+            tts_response = tts_result
+        else:
+            logger.error(f"Unexpected TTS job result type for user_id: {user.id}")
+            tts_response = None
     except TimeoutError:
-        tts_response = None
         logger.error(f"Timeout waiting for TTS job result for user_id: {user.id}")
+        tts_response = None
 
     if tts_response:
         audio_file = InputFile(
@@ -244,6 +256,10 @@ async def handle_voice(update: Update, context):
         )
         logger.info(
             f"Sent voice response to user_id: {user.id} with duration: {tts_response.duration:.2f} seconds"
+        )
+    else:
+        await update.message.reply_text(
+            "Sorry, I couldn't generate the voice message. Here's the text response instead."
         )
 
 
