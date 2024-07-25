@@ -3,7 +3,7 @@ import asyncio
 from typing import List
 from datetime import datetime
 from sqlmodel import SQLModel, Field as SQLField, create_engine, Session, select
-from telegram import Update, InputFile
+from telegram import Update, InputFile, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from rq import Queue
 from redis import Redis
@@ -117,7 +117,7 @@ async def start(update: Update, context):
     logger.info(f"Start command received from user_id: {user.id}")
 
 
-async def set_system_prompt(update: Update, context):
+async def set_prompt(update: Update, context):
     user = get_or_create_user(update.effective_user.id)
     new_prompt = " ".join(context.args)
     with Session(engine) as session:
@@ -263,17 +263,29 @@ async def handle_voice(update: Update, context):
         )
 
 
+async def set_bot_commands(application: Application):
+    commands = [
+        BotCommand("start", "Start the bot"),
+        BotCommand("prompt", "Set a new system prompt"),
+    ]
+    await application.bot.set_my_commands(commands)
+    logger.info("Bot commands have been set")
+
+
 # Main function
 def main():
     logger.info("Starting the Telegram bot")
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("set_system_prompt", set_system_prompt))
+    application.add_handler(CommandHandler("prompt", set_prompt))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)
     )
     application.add_handler(MessageHandler(filters.VOICE, handle_voice))
+
+    # Set bot commands
+    asyncio.get_event_loop().run_until_complete(set_bot_commands(application))
 
     logger.info("Telegram bot is now polling for updates")
     application.run_polling()
