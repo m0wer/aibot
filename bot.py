@@ -100,7 +100,7 @@ def get_recent_messages(user_id: int, limit: int = 5) -> List[Message]:
     return list(messages)
 
 
-async def wait_for_job_result(job, timeout=30):
+async def wait_for_job_result(job, timeout=60):
     start_time = datetime.now()
     while (datetime.now() - start_time).seconds < timeout:
         if job.result is not None:
