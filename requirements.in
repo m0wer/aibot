@@ -11,4 +11,4 @@ soundfile
 SpeechRecognition
 sqlmodel
 torch
-whisper
+openai-whisper

@@ -31,6 +31,11 @@ class TTSRequest(BaseModel):
     text: str
 
 
+class TTSResponse(BaseModel):
+    audio_data: bytes
+    duration: float
+
+
 class STTRequest(BaseModel):
     audio_file: bytes
 
@@ -52,14 +57,22 @@ def process_message(
     return response["message"]["content"]
 
 
-def text_to_speech(request: TTSRequest) -> bytes:
+def text_to_speech(request: TTSRequest) -> TTSResponse:
     logger.debug("Converting text to speech")
     tts = gTTS(text=request.text, lang="en")
     audio_file = BytesIO()
     tts.write_to_fp(audio_file)
     audio_file.seek(0)
-    logger.debug("Text-to-speech conversion completed")
-    return audio_file.getvalue()
+
+    # Get the duration of the audio
+    audio = AudioSegment.from_mp3(audio_file)
+    duration_seconds = len(audio) / 1000.0
+
+    audio_file.seek(0)
+    logger.debug(
+        f"Text-to-speech conversion completed. Duration: {duration_seconds:.2f} seconds"
+    )
+    return TTSResponse(audio_data=audio_file.getvalue(), duration=duration_seconds)
 
 
 def convert_ogg_to_wav(ogg_data: bytes) -> bytes:

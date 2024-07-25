@@ -3,12 +3,13 @@ import asyncio
 from typing import List
 from datetime import datetime
 from sqlmodel import SQLModel, Field as SQLField, create_engine, Session, select
-from telegram import Update
+from telegram import Update, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from rq import Queue
 from redis import Redis
 import ollama
 from loguru import logger
+from io import BytesIO
 
 from worker_tasks import (
     process_message,
@@ -17,6 +18,7 @@ from worker_tasks import (
     MessageRequest,
     TTSRequest,
     STTRequest,
+    TTSResponse,
 )
 
 # Environment variables
@@ -161,14 +163,21 @@ async def handle_text(update: Update, context):
     tts_job = high_priority_queue.enqueue(text_to_speech, TTSRequest(text=response))
 
     try:
-        audio_file = await wait_for_job_result(tts_job)
+        tts_response: TTSResponse = await wait_for_job_result(tts_job)
     except TimeoutError:
-        audio_file = None
+        tts_response = None
         logger.error(f"Timeout waiting for TTS job result for user_id: {user.id}")
 
-    if audio_file:
-        await update.message.reply_voice(audio_file)
-        logger.info(f"Sent voice response to user_id: {user.id}")
+    if tts_response:
+        audio_file = InputFile(
+            BytesIO(tts_response.audio_data), filename="voice_message.ogg"
+        )
+        await update.message.reply_voice(
+            audio_file, duration=int(tts_response.duration)
+        )
+        logger.info(
+            f"Sent voice response to user_id: {user.id} with duration: {tts_response.duration:.2f} seconds"
+        )
 
 
 async def handle_voice(update: Update, context):
@@ -221,14 +230,21 @@ async def handle_voice(update: Update, context):
     tts_job = high_priority_queue.enqueue(text_to_speech, TTSRequest(text=response))
 
     try:
-        audio_file = await wait_for_job_result(tts_job)
+        tts_response: TTSResponse = await wait_for_job_result(tts_job)
     except TimeoutError:
-        audio_file = None
+        tts_response = None
         logger.error(f"Timeout waiting for TTS job result for user_id: {user.id}")
 
-    if audio_file:
-        await update.message.reply_voice(audio_file)
-        logger.info(f"Sent voice response to user_id: {user.id}")
+    if tts_response:
+        audio_file = InputFile(
+            BytesIO(tts_response.audio_data), filename="voice_message.ogg"
+        )
+        await update.message.reply_voice(
+            audio_file, duration=int(tts_response.duration)
+        )
+        logger.info(
+            f"Sent voice response to user_id: {user.id} with duration: {tts_response.duration:.2f} seconds"
+        )
 
 
 # Main function
