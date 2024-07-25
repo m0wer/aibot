@@ -1,5 +1,6 @@
 gTTS
 loguru
+numpy
 ollama
 pydantic
 pydub

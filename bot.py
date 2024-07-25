@@ -178,7 +178,9 @@ async def handle_voice(update: Update, context):
     logger.info(f"Received voice message from user_id: {user.id}")
 
     logger.debug(f"Enqueueing STT job for user_id: {user.id}")
-    stt_job = gpu_queue.enqueue(speech_to_text, STTRequest(audio_file=voice_file))
+    stt_job = gpu_queue.enqueue(
+        speech_to_text, STTRequest(audio_file=bytes(voice_file))
+    )
 
     try:
         transcribed_text = await wait_for_job_result(stt_job)

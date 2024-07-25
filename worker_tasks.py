@@ -64,19 +64,40 @@ def text_to_speech(request: TTSRequest) -> bytes:
 
 def convert_ogg_to_wav(ogg_data: bytes) -> bytes:
     """Convert Ogg/Opus audio data to WAV format."""
+    logger.debug("Starting conversion from Ogg to WAV")
     audio = AudioSegment.from_file(BytesIO(ogg_data), format="ogg")
     wav_io = BytesIO()
     audio.export(wav_io, format="wav")
+    wav_io.seek(0)
+    logger.debug("Conversion from Ogg to WAV completed")
     return wav_io.getvalue()
 
 
 def speech_to_text(request: STTRequest) -> str:
     logger.debug("Converting speech to text")
     recognizer = sr.Recognizer()
-    wav_data = convert_ogg_to_wav(request.audio_file)
+
+    # Debug: log the initial size of the audio file
+    logger.debug(f"Original Ogg audio file size: {len(request.audio_file)} bytes")
+
+    # Convert Ogg to WAV
+    try:
+        wav_data = convert_ogg_to_wav(request.audio_file)
+    except Exception as e:
+        logger.error(f"Error during Ogg to WAV conversion: {e}")
+        return "Sorry, there was an error processing the audio."
+
+    # Debug: log the size of the converted audio file
+    logger.debug(f"Converted WAV audio file size: {len(wav_data)} bytes")
+
     audio_file = BytesIO(wav_data)
-    with sr.AudioFile(audio_file) as source:
-        audio = recognizer.record(source)
+    try:
+        with sr.AudioFile(audio_file) as source:
+            audio = recognizer.record(source)
+    except ValueError as e:
+        logger.error(f"Error reading audio file: {e}")
+        return "Sorry, there was an error reading the audio file."
+
     try:
         text = recognizer.recognize_whisper(
             audio, model="base", device="cuda" if torch.cuda.is_available() else "cpu"
