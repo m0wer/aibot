@@ -7,6 +7,7 @@ pydub
 python-telegram-bot
 redis
 rq
+soundfile
 SpeechRecognition
 sqlmodel
 torch
