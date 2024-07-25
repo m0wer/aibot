@@ -2,7 +2,6 @@ import os
 from pydub import AudioSegment
 from io import BytesIO
 from pydantic import BaseModel
-import torch
 import speech_recognition as sr
 from gtts import gTTS
 from loguru import logger
@@ -112,9 +111,7 @@ def speech_to_text(request: STTRequest) -> str:
         return "Sorry, there was an error reading the audio file."
 
     try:
-        text = recognizer.recognize_whisper(
-            audio, model="base", device="cuda" if torch.cuda.is_available() else "cpu"
-        )
+        text = recognizer.recognize_whisper(audio, model="small")
         logger.debug("Speech-to-text conversion completed successfully")
         return text
     except sr.UnknownValueError:
