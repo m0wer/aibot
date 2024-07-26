@@ -5,7 +5,7 @@ numpy
 ollama
 pydantic
 pydub
-python-telegram-bot
+python-telegram-bot[webhooks]
 redis
 rq
 soundfile

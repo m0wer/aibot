@@ -135,7 +135,7 @@ pydantic-core==2.20.1
     # via pydantic
 pydub==0.25.1
     # via -r requirements.in
-python-telegram-bot==21.4
+python-telegram-bot[webhooks]==21.4
     # via -r requirements.in
 pyyaml==6.0.1
     # via
@@ -179,12 +179,14 @@ torch==2.4.0
     # via
     #   -r requirements.in
     #   openai-whisper
+tornado==6.4.1
+    # via python-telegram-bot
 tqdm==4.66.4
     # via
     #   huggingface-hub
     #   openai-whisper
     #   transformers
-transformers==4.43.2
+transformers==4.43.3
     # via openai-whisper
 triton==3.0.0
     # via
