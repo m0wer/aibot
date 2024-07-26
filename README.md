@@ -45,7 +45,7 @@ You can configure the following environment variables in your `.env` file:
 
 - Start a chat with your bot on Telegram
 - Send text messages or voice notes to interact with the bot
-- Use the `/set_system_prompt` command to change the system prompt for the Ollama model
+- Use the `/prompt` command to change the system prompt for the Ollama model
 
 ## Development
 

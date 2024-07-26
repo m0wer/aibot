@@ -4,6 +4,8 @@
 #
 #    pip-compile requirements.in
 #
+alembic==1.13.2
+    # via -r requirements.in
 annotated-types==0.7.0
     # via pydantic
 anyio==4.4.0
@@ -64,8 +66,12 @@ llvmlite==0.43.0
     # via numba
 loguru==0.7.2
     # via -r requirements.in
+mako==1.3.5
+    # via alembic
 markupsafe==2.1.5
-    # via jinja2
+    # via
+    #   jinja2
+    #   mako
 more-itertools==10.3.0
     # via openai-whisper
 mpmath==1.3.0
@@ -160,7 +166,9 @@ soundfile==0.12.1
 speechrecognition==3.10.4
     # via -r requirements.in
 sqlalchemy==2.0.31
-    # via sqlmodel
+    # via
+    #   alembic
+    #   sqlmodel
 sqlmodel==0.0.21
     # via -r requirements.in
 sympy==1.13.1
@@ -184,6 +192,7 @@ triton==3.0.0
     #   torch
 typing-extensions==4.12.2
     # via
+    #   alembic
     #   huggingface-hub
     #   pydantic
     #   pydantic-core

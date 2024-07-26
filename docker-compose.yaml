@@ -8,6 +8,8 @@ services:
       - DATABASE_URL=sqlite:///data/db.sqlite
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
+      - WEBHOOK_PORT=${WEBHOOK_PORT:-}
+      - WEBHOOK_URL=${WEBHOOK_URL:-}
     volumes:
       - ${SQLITE_PATH:-./data/}:/app/data/
     depends_on:
@@ -28,9 +30,13 @@ services:
     build: .
     command: rq worker --url redis://redis:6379 high default
     environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=sqlite:///data/db.sqlite
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
+    volumes:
+      - ${SQLITE_PATH:-./data/}:/app/data/
     depends_on:
       - redis
     deploy:
@@ -44,9 +50,14 @@ services:
     build: .
     command: rq worker --url redis://redis:6379 high
     environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=sqlite:///data/db.sqlite
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+    volumes:
+      - ${SQLITE_PATH:-./data/}:/app/data/
     depends_on:
       - redis
     deploy:
@@ -60,9 +71,14 @@ services:
     build: .
     command: rq worker --url redis://redis:6379 gpu
     environment:
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
       - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=sqlite:///data/db.sqlite
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
+      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
+    volumes:
+      - ${SQLITE_PATH:-./data/}:/app/data/
     depends_on:
       - redis
     deploy:
@@ -86,3 +102,14 @@ services:
         limits:
           cpus: '0.5'
           memory: 50MB
+
+  alembic:
+    image: ghcr.io/m0wer/aibot:master
+    build: .
+    command: alembic upgrade head
+    environment:
+      - DATABASE_URL=sqlite:///data/db.sqlite
+    volumes:
+      - ${SQLITE_PATH:-./data/}:/app/data/
+    depends_on:
+      - bot

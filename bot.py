@@ -1,25 +1,23 @@
 import os
 import asyncio
-from typing import List
-from datetime import datetime
-from sqlmodel import SQLModel, Field as SQLField, create_engine, Session, select
-from telegram import Update, InputFile, BotCommand
+from datetime import datetime, timedelta
+from sqlmodel import Session, select
+from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from rq import Queue
 from redis import Redis
 import ollama
 from loguru import logger
-from io import BytesIO
+from time import time
 
 from worker_tasks import (
     process_message,
-    text_to_speech,
     speech_to_text,
     MessageRequest,
-    TTSRequest,
     STTRequest,
-    TTSResponse,
 )
+from models import User, Message, engine
+from utils import save_message
 
 # Environment variables
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -27,31 +25,12 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/db.sqlite")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1")
+WEBHOOK_PORT = os.getenv("WEBHOOK_PORT")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 logger.debug(
     f"Initialized with REDIS_URL: {REDIS_URL}, DATABASE_URL: {DATABASE_URL}, OLLAMA_URL: {OLLAMA_URL}, OLLAMA_MODEL: {OLLAMA_MODEL}"
 )
-
-
-# Database models
-class User(SQLModel, table=True):
-    id: int = SQLField(primary_key=True)
-    telegram_id: int = SQLField(unique=True, index=True)
-    system_prompt: str = SQLField(default="You are a helpful assistant.")
-
-
-class Message(SQLModel, table=True):
-    id: int = SQLField(primary_key=True)
-    user_id: int = SQLField(foreign_key="user.id")
-    content: str
-    timestamp: datetime = SQLField(default_factory=datetime.utcnow)
-    is_from_user: bool
-
-
-# Initialize database
-engine = create_engine(DATABASE_URL)
-SQLModel.metadata.create_all(engine)
-logger.info("Database initialized")
 
 # Initialize Redis queues
 redis_conn = Redis.from_url(REDIS_URL)
@@ -80,33 +59,19 @@ def get_or_create_user(telegram_id: int) -> User:
         return user
 
 
-def save_message(user_id: int, content: str, is_from_user: bool):
+def get_recent_messages(user_id: int, limit: int = 20) -> list[Message]:
     with Session(engine) as session:
-        message = Message(user_id=user_id, content=content, is_from_user=is_from_user)
-        session.add(message)
-        session.commit()
-    logger.debug(f"Saved message for user_id: {user_id}, is_from_user: {is_from_user}")
-
-
-def get_recent_messages(user_id: int, limit: int = 5) -> List[Message]:
-    with Session(engine) as session:
+        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
         messages = session.exec(
             select(Message)
             .where(Message.user_id == user_id)
-            .order_by(Message.timestamp.desc())  # type: ignore
+            .where(Message.timestamp > one_hour_ago)
+            .where(Message.is_reset.is_(False))  # type: ignore
+            .order_by(Message.timestamp.asc())  # type: ignore
             .limit(limit)
         ).all()
     logger.debug(f"Retrieved {len(messages)} recent messages for user_id: {user_id}")
     return list(messages)
-
-
-async def wait_for_job_result(job, timeout=60):
-    start_time = datetime.now()
-    while (datetime.now() - start_time).seconds < timeout:
-        if job.result is not None:
-            return job.result
-        await asyncio.sleep(0.1)
-    raise TimeoutError("Job result timeout")
 
 
 # Command handlers
@@ -119,157 +84,111 @@ async def start(update: Update, context):
 
 async def set_prompt(update: Update, context):
     user = get_or_create_user(update.effective_user.id)
+    with Session(engine) as session:
+        db_user = session.get(User, user.id)
+        if db_user:
+            current_prompt = db_user.system_prompt
+        else:
+            current_prompt = "Default system prompt"
+
+    if not context.args:
+        await update.message.reply_text(
+            f"Current system prompt: {current_prompt}\n\nTo change it, use /prompt followed by the new prompt."
+        )
+        return
+
     new_prompt = " ".join(context.args)
     with Session(engine) as session:
-        user.system_prompt = new_prompt
-        session.add(user)
-        session.commit()
+        db_user = session.get(User, user.id)
+        if db_user:
+            db_user.system_prompt = new_prompt
+            session.add(db_user)
+            session.commit()
     await update.message.reply_text(f"System prompt updated to: {new_prompt}")
     logger.info(f"System prompt updated for user_id: {user.id}")
 
 
+async def reset_chat(update: Update, context):
+    user = get_or_create_user(update.effective_user.id)
+    with Session(engine) as session:
+        messages_to_reset = session.exec(
+            select(Message)
+            .where(Message.user_id == user.id)
+            .where(Message.is_reset.is_(False))  # type: ignore
+        ).all()
+        for message in messages_to_reset:
+            message.is_reset = True
+        session.commit()
+    await update.message.reply_text("Chat history has been reset.")
+    logger.info(f"Chat history reset for user_id: {user.id}")
+
+
 # Message handlers
 async def handle_text(update: Update, context):
+    start_time = time()
     user = get_or_create_user(update.effective_user.id)
     save_message(user.id, update.message.text, True)
-    logger.info(f"Received text message from user_id: {user.id}")
+    logger.info(
+        f"Received text message from user_id: {user.id}. Content: {update.message.text}"
+    )
 
     recent_messages = get_recent_messages(user.id)
     context_messages = [
         f"{'User' if msg.is_from_user else 'Assistant'}: {msg.content}"
-        for msg in reversed(recent_messages)
+        for msg in recent_messages
     ]
 
-    request = MessageRequest(user_id=user.id, content=update.message.text)
+    request = MessageRequest(
+        user_id=user.id,
+        content=update.message.text,
+        chat_id=update.effective_chat.id,
+        message_id=update.message.message_id,
+    )
     logger.debug(f"Enqueueing message processing job for user_id: {user.id}")
-    job = default_queue.enqueue(
+    default_queue.enqueue(
         process_message, request, user.system_prompt, context_messages
     )
 
-    try:
-        response = await wait_for_job_result(job)
-    except TimeoutError:
-        response = "Sorry, I couldn't process your message in time."
-        logger.error(
-            f"Timeout waiting for message processing job result for user_id: {user.id}"
-        )
-
-    save_message(user.id, response, False)
-    logger.debug(f"Received response for user_id: {user.id}")
-
-    await update.message.reply_text(response)
-
-    logger.debug(f"Enqueueing TTS job for user_id: {user.id}")
-    tts_job = high_priority_queue.enqueue(text_to_speech, TTSRequest(text=response))
-
-    try:
-        tts_result = await wait_for_job_result(tts_job)
-        if isinstance(tts_result, TTSResponse):
-            tts_response = tts_result
-        else:
-            logger.error(f"Unexpected TTS job result type for user_id: {user.id}")
-            tts_response = None
-    except TimeoutError:
-        logger.error(f"Timeout waiting for TTS job result for user_id: {user.id}")
-        tts_response = None
-
-    if tts_response:
-        audio_file = InputFile(
-            BytesIO(tts_response.audio_data), filename="voice_message.ogg"
-        )
-        await update.message.reply_voice(
-            audio_file, duration=int(tts_response.duration)
-        )
-        logger.info(
-            f"Sent voice response to user_id: {user.id} with duration: {tts_response.duration:.2f} seconds"
-        )
-    else:
-        logger.warning(f"Failed to generate voice message for user_id: {user.id}")
+    # Log the time taken for message processing
+    processing_time = time() - start_time
+    logger.info(f"Message processing enqueued in {processing_time:.2f} seconds")
 
 
 async def handle_voice(update: Update, context):
+    start_time = time()
     user = get_or_create_user(update.effective_user.id)
+
     voice = await update.message.voice.get_file()
+
     voice_file = await voice.download_as_bytearray()
     logger.info(f"Received voice message from user_id: {user.id}")
 
+    is_forwarded: bool = bool(update.message.api_kwargs.get("forward_from"))
+    logger.debug(f"Voice message forwarded: {is_forwarded}")
+
     logger.debug(f"Enqueueing STT job for user_id: {user.id}")
-    stt_job = gpu_queue.enqueue(
-        speech_to_text, STTRequest(audio_file=bytes(voice_file))
+    gpu_queue.enqueue(
+        speech_to_text,
+        STTRequest(
+            audio_file=bytes(voice_file),
+            chat_id=update.effective_chat.id,
+            message_id=update.message.message_id,
+            forwarded=is_forwarded,
+        ),
     )
 
-    try:
-        transcribed_text = await wait_for_job_result(stt_job)
-        logger.debug(f"Transcribed text for user_id: {user.id}: {transcribed_text}")
-    except TimeoutError:
-        transcribed_text = "Sorry, I couldn't transcribe your voice message in time."
-        logger.error(f"Timeout waiting for STT job result for user_id: {user.id}")
-
-    save_message(user.id, transcribed_text, True)
-
-    # Inform the user that their message was received and is being processed
-    await update.message.reply_text("I've received your voice message. Processing...")
-
-    recent_messages = get_recent_messages(user.id)
-    context_messages = [
-        f"{'User' if msg.is_from_user else 'Assistant'}: {msg.content}"
-        for msg in reversed(recent_messages)
-    ]
-
-    request = MessageRequest(user_id=user.id, content=transcribed_text)
-    logger.debug(f"Enqueueing message processing job for user_id: {user.id}")
-    job = default_queue.enqueue(
-        process_message, request, user.system_prompt, context_messages
+    # Log the time taken for voice message handling
+    voice_handling_time = time() - start_time
+    logger.info(
+        f"Voice message handling completed in {voice_handling_time:.2f} seconds"
     )
-
-    try:
-        response = await wait_for_job_result(job)
-    except TimeoutError:
-        response = "Sorry, I couldn't process your message in time."
-        logger.error(
-            f"Timeout waiting for message processing job result for user_id: {user.id}"
-        )
-
-    save_message(user.id, response, False)
-    logger.debug(f"Received response for user_id: {user.id}")
-
-    # Send the text response immediately
-    await update.message.reply_text(response)
-
-    logger.debug(f"Enqueueing TTS job for user_id: {user.id}")
-    tts_job = high_priority_queue.enqueue(text_to_speech, TTSRequest(text=response))
-
-    try:
-        tts_result = await wait_for_job_result(tts_job)
-        if isinstance(tts_result, TTSResponse):
-            tts_response = tts_result
-        else:
-            logger.error(f"Unexpected TTS job result type for user_id: {user.id}")
-            tts_response = None
-    except TimeoutError:
-        logger.error(f"Timeout waiting for TTS job result for user_id: {user.id}")
-        tts_response = None
-
-    if tts_response:
-        audio_file = InputFile(
-            BytesIO(tts_response.audio_data), filename="voice_message.ogg"
-        )
-        await update.message.reply_voice(
-            audio_file, duration=int(tts_response.duration)
-        )
-        logger.info(
-            f"Sent voice response to user_id: {user.id} with duration: {tts_response.duration:.2f} seconds"
-        )
-    else:
-        await update.message.reply_text(
-            "Sorry, I couldn't generate the voice message. Here's the text response instead."
-        )
 
 
 async def set_bot_commands(application: Application):
     commands = [
         BotCommand("start", "Start the bot"),
         BotCommand("prompt", "Set a new system prompt"),
+        BotCommand("reset", "Reset chat history"),
     ]
     await application.bot.set_my_commands(commands)
     logger.info("Bot commands have been set")
@@ -282,6 +201,7 @@ def main():
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("prompt", set_prompt))
+    application.add_handler(CommandHandler("reset", reset_chat))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)
     )
@@ -290,8 +210,17 @@ def main():
     # Set bot commands
     asyncio.get_event_loop().run_until_complete(set_bot_commands(application))
 
-    logger.info("Telegram bot is now polling for updates")
-    application.run_polling()
+    if WEBHOOK_PORT and WEBHOOK_URL:
+        logger.info(f"Starting webhook on port {WEBHOOK_PORT}")
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=int(WEBHOOK_PORT),
+            url_path=TELEGRAM_TOKEN,
+            webhook_url=f"{WEBHOOK_URL}/{TELEGRAM_TOKEN}",
+        )
+    else:
+        logger.info("Telegram bot is now polling for updates")
+        application.run_polling()
 
 
 if __name__ == "__main__":
