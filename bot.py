@@ -25,7 +25,6 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///data/db.sqlite")
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1")
-WEBHOOK_PORT = os.getenv("WEBHOOK_PORT")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 logger.debug(
@@ -237,11 +236,10 @@ def main():
     # Set bot commands
     asyncio.get_event_loop().run_until_complete(set_bot_commands(application))
 
-    if WEBHOOK_PORT and WEBHOOK_URL:
-        logger.info(f"Starting webhook on port {WEBHOOK_PORT}")
+    if WEBHOOK_URL:
         application.run_webhook(
             listen="0.0.0.0",
-            port=int(WEBHOOK_PORT),
+            port=8443,
             url_path=TELEGRAM_TOKEN,
             webhook_url=f"{WEBHOOK_URL}/{TELEGRAM_TOKEN}",
         )

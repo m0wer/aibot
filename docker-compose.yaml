@@ -12,6 +12,8 @@ services:
       - WEBHOOK_URL=${WEBHOOK_URL:-}
     volumes:
       - ${SQLITE_PATH:-./data/}:/app/data/
+    ports:
+      - ${WEBHOOK_PORT:-8443}:8443
     depends_on:
       - redis
     deploy:
