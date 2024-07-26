@@ -10,7 +10,7 @@ import ollama
 from time import time
 from telegram import Bot
 from sqlmodel import Session, select
-from utils import save_message
+from utils import save_message, save_processing_time
 from models import engine, User
 
 # Environment variables
@@ -21,7 +21,7 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1")
 
 # Ollama client
-ollama_client = ollama.Client(host=os.getenv("OLLAMA_URL", "http://localhost:11434"))
+ollama_client = ollama.Client(host=OLLAMA_URL)
 logger.info(f"Ollama client initialized with URL: {OLLAMA_URL}")
 
 # Telegram bot instance
@@ -81,6 +81,9 @@ async def _process_message(
     ollama_start_time = time()
     response = ollama_client.chat(model=OLLAMA_MODEL, messages=messages, keep_alive=-1)
     ollama_time = time() - ollama_start_time
+    save_processing_time(
+        request.user_id, "ollama_response", ollama_time, request.message_id
+    )
     logger.debug(
         f"Received response from Ollama for user_id: {request.user_id}. Response: {response}"
     )
@@ -103,6 +106,9 @@ async def _process_message(
         if user:
             save_message(user.id, response_text, False)
     db_time = time() - db_start_time
+    save_processing_time(
+        request.user_id, "database_operation", db_time, request.message_id
+    )
 
     # Send the text response
     send_start_time = time()
@@ -112,6 +118,9 @@ async def _process_message(
         reply_to_message_id=request.message_id,
     )
     send_time = time() - send_start_time
+    save_processing_time(
+        request.user_id, "send_text_response", send_time, request.message_id
+    )
 
     # Generate and send voice message
     if not response_text:
@@ -120,6 +129,9 @@ async def _process_message(
         tts_start_time = time()
         tts_response = text_to_speech(TTSRequest(text=response_text))
         tts_time = time() - tts_start_time
+        save_processing_time(
+            request.user_id, "text_to_speech", tts_time, request.message_id
+        )
 
         voice_send_start_time = time()
         await bot.send_voice(
@@ -129,7 +141,13 @@ async def _process_message(
             duration=tts_response.duration,
         )
         voice_send_time = time() - voice_send_start_time
+        save_processing_time(
+            request.user_id, "send_voice_response", voice_send_time, request.message_id
+        )
 
+    save_processing_time(
+        request.user_id, "total_processing", processing_time, request.message_id
+    )
     logger.info(f"Message processed and sent in {processing_time:.2f} seconds")
 
 
@@ -161,7 +179,6 @@ def text_to_speech(request: TTSRequest) -> TTSResponse:
 
 
 def convert_ogg_to_wav(ogg_data: bytes) -> bytes:
-    """Convert Ogg/Opus audio data to WAV format."""
     start_time = time()
     logger.debug("Starting conversion from Ogg to WAV")
     audio = AudioSegment.from_file(BytesIO(ogg_data), format="ogg")
@@ -190,6 +207,9 @@ async def _speech_to_text(request: STTRequest, **kwargs) -> None:
         conversion_start_time = time()
         wav_data = convert_ogg_to_wav(request.audio_file)
         conversion_time = time() - conversion_start_time
+        save_processing_time(
+            request.chat_id, "audio_conversion", conversion_time, request.message_id
+        )
     except Exception as e:
         logger.error(f"Error during Ogg to WAV conversion: {e}")
         await bot.send_message(
@@ -220,7 +240,13 @@ async def _speech_to_text(request: STTRequest, **kwargs) -> None:
         stt_start_time = time()
         text = recognizer.recognize_whisper(audio_data=audio)
         stt_time = time() - stt_start_time
+        save_processing_time(
+            request.chat_id, "speech_to_text", stt_time, request.message_id
+        )
         processing_time = time() - start_time
+        save_processing_time(
+            request.chat_id, "total_stt_processing", processing_time, request.message_id
+        )
         logger.info(f"Transcribed audio message. Content: {text}")
         logger.debug(
             f"Speech-to-text conversion completed successfully in {processing_time:.2f} seconds"
