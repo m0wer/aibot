@@ -123,6 +123,23 @@ async def reset_chat(update: Update, context):
     logger.info(f"Chat history reset for user_id: {user.id}")
 
 
+async def history(update: Update, context):
+    user = get_or_create_user(update.effective_user.id)
+    recent_messages = get_recent_messages(user.id)
+
+    if not recent_messages:
+        await update.message.reply_text("No recent messages found in the chat history.")
+        return
+
+    formatted_history = "Chat History:\n\n"
+    for msg in recent_messages:
+        role = "User" if msg.is_from_user else "Assistant"
+        formatted_history += f"{role}: {msg.content}\n\n"
+
+    await update.message.reply_text(formatted_history)
+    logger.info(f"History command executed for user_id: {user.id}")
+
+
 # Message handlers
 async def handle_text(update: Update, context):
     start_time = time()
@@ -197,6 +214,7 @@ async def set_bot_commands(application: Application):
         BotCommand("start", "Start the bot"),
         BotCommand("prompt", "Set a new system prompt"),
         BotCommand("reset", "Reset chat history"),
+        BotCommand("history", "Show recent chat history"),
     ]
     await application.bot.set_my_commands(commands)
     logger.info("Bot commands have been set")
@@ -210,6 +228,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("prompt", set_prompt))
     application.add_handler(CommandHandler("reset", reset_chat))
+    application.add_handler(CommandHandler("history", history))
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)
     )

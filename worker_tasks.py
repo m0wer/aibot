@@ -77,7 +77,10 @@ async def _process_message(
             for i, msg in enumerate(context_messages)
         ],
     ]
+
+    ollama_start_time = time()
     response = ollama_client.chat(model=OLLAMA_MODEL, messages=messages, keep_alive=-1)
+    ollama_time = time() - ollama_start_time
     logger.debug(
         f"Received response from Ollama for user_id: {request.user_id}. Response: {response}"
     )
@@ -92,31 +95,40 @@ async def _process_message(
     )
 
     # Save the bot's response to the database
+    db_start_time = time()
     with Session(engine) as session:
         user = session.exec(
             select(User).where(User.telegram_id == request.user_id)
         ).first()
         if user:
             save_message(user.id, response_text, False)
+    db_time = time() - db_start_time
 
     # Send the text response
+    send_start_time = time()
     await bot.send_message(
         chat_id=request.chat_id,
         text=response_with_time,
         reply_to_message_id=request.message_id,
     )
+    send_time = time() - send_start_time
 
     # Generate and send voice message
     if not response_text:
-        logger.warning("Emty response text. Skipping text-to-speech conversion")
+        logger.warning("Empty response text. Skipping text-to-speech conversion")
     else:
+        tts_start_time = time()
         tts_response = text_to_speech(TTSRequest(text=response_text))
+        tts_time = time() - tts_start_time
+
+        voice_send_start_time = time()
         await bot.send_voice(
             chat_id=request.chat_id,
             voice=tts_response.audio_data,
             reply_to_message_id=request.message_id,
             duration=tts_response.duration,
         )
+        voice_send_time = time() - voice_send_start_time
 
     logger.info(f"Message processed and sent in {processing_time:.2f} seconds")
 
@@ -144,6 +156,7 @@ def text_to_speech(request: TTSRequest) -> TTSResponse:
     logger.debug(
         f"Text-to-speech conversion completed. Duration: {duration_seconds:.2f} seconds, Processing time: {processing_time:.2f} seconds"
     )
+
     return TTSResponse(audio_data=audio_file.getvalue(), duration=duration_seconds)
 
 
@@ -159,6 +172,7 @@ def convert_ogg_to_wav(ogg_data: bytes) -> bytes:
     logger.debug(
         f"Conversion from Ogg to WAV completed in {processing_time:.2f} seconds"
     )
+
     return wav_io.getvalue()
 
 
@@ -173,7 +187,9 @@ async def _speech_to_text(request: STTRequest, **kwargs) -> None:
 
     # Convert Ogg to WAV
     try:
+        conversion_start_time = time()
         wav_data = convert_ogg_to_wav(request.audio_file)
+        conversion_time = time() - conversion_start_time
     except Exception as e:
         logger.error(f"Error during Ogg to WAV conversion: {e}")
         await bot.send_message(
@@ -201,7 +217,9 @@ async def _speech_to_text(request: STTRequest, **kwargs) -> None:
 
     try:
         # Use the Whisper model directly without initializing it again
+        stt_start_time = time()
         text = recognizer.recognize_whisper(audio_data=audio)
+        stt_time = time() - stt_start_time
         processing_time = time() - start_time
         logger.info(f"Transcribed audio message. Content: {text}")
         logger.debug(
