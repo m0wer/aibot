@@ -55,7 +55,6 @@ services:
       - DATABASE_URL=sqlite:///data/db.sqlite
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
-      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
     volumes:
       - ${SQLITE_PATH:-./data/}:/app/data/
     depends_on:
@@ -76,7 +75,6 @@ services:
       - DATABASE_URL=sqlite:///data/db.sqlite
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1}
-      - TELEGRAM_TOKEN=${TELEGRAM_TOKEN}
     volumes:
       - ${SQLITE_PATH:-./data/}:/app/data/
     depends_on:
