@@ -78,7 +78,9 @@ async def _process_message(
         ],
     ]
     response = ollama_client.chat(model=OLLAMA_MODEL, messages=messages, keep_alive=-1)
-    logger.debug(f"Received response from Ollama for user_id: {request.user_id}")
+    logger.debug(
+        f"Received response from Ollama for user_id: {request.user_id}. Response: {response}"
+    )
 
     # Calculate processing time
     processing_time = time() - start_time
@@ -105,13 +107,16 @@ async def _process_message(
     )
 
     # Generate and send voice message
-    tts_response = text_to_speech(TTSRequest(text=response_text))
-    await bot.send_voice(
-        chat_id=request.chat_id,
-        voice=tts_response.audio_data,
-        reply_to_message_id=request.message_id,
-        duration=tts_response.duration,
-    )
+    if not response_text:
+        logger.warning("Emty response text. Skipping text-to-speech conversion")
+    else:
+        tts_response = text_to_speech(TTSRequest(text=response_text))
+        await bot.send_voice(
+            chat_id=request.chat_id,
+            voice=tts_response.audio_data,
+            reply_to_message_id=request.message_id,
+            duration=tts_response.duration,
+        )
 
     logger.info(f"Message processed and sent in {processing_time:.2f} seconds")
 
@@ -157,7 +162,7 @@ def convert_ogg_to_wav(ogg_data: bytes) -> bytes:
     return wav_io.getvalue()
 
 
-async def _speech_to_text(request: STTRequest) -> None:
+async def _speech_to_text(request: STTRequest, **kwargs) -> None:
     global whisper_model
     start_time = time()
     logger.debug("Converting speech to text")
@@ -215,8 +220,9 @@ async def _speech_to_text(request: STTRequest) -> None:
         )
         logger.debug(f"Message request: {message_request}")
         await _process_message(
-            message_request, "You are a helpful assistant.", []
-        )  # Add appropriate system prompt and context
+            message_request,
+            **kwargs,
+        )
 
     except sr.UnknownValueError:
         logger.warning("Speech recognition could not understand the audio")
@@ -234,5 +240,5 @@ async def _speech_to_text(request: STTRequest) -> None:
         )
 
 
-def speech_to_text(request: STTRequest) -> None:
-    asyncio.run(_speech_to_text(request))
+def speech_to_text(request: STTRequest, **kwargs) -> None:
+    asyncio.run(_speech_to_text(request, **kwargs))

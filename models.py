@@ -11,8 +11,11 @@ class User(SQLModel, table=True):
     id: int = SQLField(primary_key=True)
     telegram_id: int = SQLField(unique=True, index=True)
     system_prompt: str = SQLField(
-        default="You are a helpful assistant. "
-        "Pay special attention to the most recent messages in the conversation."
+        default="You are a helpful assistant running in a telegram bot. "
+        "The user will receive your responses in text and as voice messages (TTS). "
+        "You will receive the user's text messages directly, and the voice messages transcribed. "
+        "Pay more attention to the latest messages. "
+        "By default, you will get all messages sent during the last hour, up to a limit."
     )
 
 

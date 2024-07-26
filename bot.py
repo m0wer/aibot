@@ -166,6 +166,12 @@ async def handle_voice(update: Update, context):
     is_forwarded: bool = bool(update.message.api_kwargs.get("forward_from"))
     logger.debug(f"Voice message forwarded: {is_forwarded}")
 
+    recent_messages = get_recent_messages(user.id)
+    context_messages = [
+        f"{'User' if msg.is_from_user else 'Assistant'}: {msg.content}"
+        for msg in recent_messages
+    ]
+
     logger.debug(f"Enqueueing STT job for user_id: {user.id}")
     gpu_queue.enqueue(
         speech_to_text,
@@ -175,6 +181,8 @@ async def handle_voice(update: Update, context):
             message_id=update.message.message_id,
             forwarded=is_forwarded,
         ),
+        system_prompt=user.system_prompt,
+        context_messages=context_messages,
     )
 
     # Log the time taken for voice message handling
