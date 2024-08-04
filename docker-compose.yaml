@@ -16,6 +16,7 @@ services:
       - ${WEBHOOK_PORT:-8443}:8443
     depends_on:
       - redis
+    restart: unless-stopped
     deploy:
       resources:
         limits:
@@ -26,6 +27,7 @@ services:
     image: redis:6-alpine
     ports:
       - "6379:6379"
+    restart: unless-stopped
 
   rq-worker-default:
     image: ghcr.io/m0wer/aibot:master
@@ -41,6 +43,7 @@ services:
       - ${SQLITE_PATH:-./data/}:/app/data/
     depends_on:
       - redis
+    restart: unless-stopped
     deploy:
       resources:
         limits:
@@ -61,6 +64,7 @@ services:
       - ${SQLITE_PATH:-./data/}:/app/data/
     depends_on:
       - redis
+    restart: unless-stopped
     deploy:
       resources:
         limits:
@@ -81,6 +85,7 @@ services:
       - ${SQLITE_PATH:-./data/}:/app/data/
     depends_on:
       - redis
+    restart: unless-stopped
     deploy:
       resources:
         limits:
